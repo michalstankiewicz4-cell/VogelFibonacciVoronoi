@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Fibonacci Vogel + Voronoi</title>
+    <style>
+        body { margin: 0; background: #f0f0f0; overflow: hidden; font-family: sans-serif; }
+        canvas { display: block; }
+        #ui-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 350px;
+        }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        label { font-size: 13px; color: #333; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-container">
+        <div class="control-group">
+            <label id="n-label">Liczba komórek (n): 200</label>
+            <input type="range" id="n-slider" min="10" max="1000" value="200">
+        </div>
+        <div class="control-group">
+            <label id="zoom-label">Skala (Zoom): 15</label>
+            <input type="range" id="zoom-slider" min="5" max="50" value="15">
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "d3-delaunay": "https://cdn.skypack.dev/d3-delaunay@6"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { Delaunay } from 'd3-delaunay';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+
+        const camera = new THREE.OrthographicCamera(
+            window.innerWidth / -2, window.innerWidth / 2,
+            window.innerHeight / 2, window.innerHeight / -2,
+            1, 1000
+        );
+        camera.position.z = 10;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        let voronoiMesh = null;
+        const phi = (1 + Math.sqrt(5)) / 2;
+        const goldenAngle = 2 * Math.PI * (1 - 1 / phi);
+
+        function generateVoronoi(n, scale) {
+            if (voronoiMesh) scene.remove(voronoiMesh);
+
+            // 1. Generowanie punktów metodą Vogla
+            const points = [];
+            for (let i = 0; i < n; i++) {
+                const r = Math.sqrt(i) * scale;
+                const theta = i * goldenAngle;
+                points.push(r * Math.cos(theta), r * Math.sin(theta));
+            }
+
+            // 2. Obliczanie diagramu Voronoi
+            // Definiujemy zakres (bounding box) dla algorytmu
+            const range = n * scale; 
+            const delaunay = new Delaunay(points);
+            const voronoi = delaunay.voronoi([-range, -range, range, range]);
+
+            // 3. Budowanie geometrii krawędzi (zamiast punktów, łączymy je w komórki)
+            const linePoints = [];
+            for (const cell of voronoi.cellPolygons()) {
+                for (let i = 0; i < cell.length - 1; i++) {
+                    linePoints.push(new THREE.Vector3(cell[i][0], cell[i][1], 0));
+                    linePoints.push(new THREE.Vector3(cell[i+1][0], cell[i+1][1], 0));
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+            const material = new THREE.LineBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.6 });
+            voronoiMesh = new THREE.LineSegments(geometry, material);
+            scene.add(voronoiMesh);
+        }
+
+        // UI
+        const nSlider = document.getElementById('n-slider');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const nLabel = document.getElementById('n-label');
+        const zoomLabel = document.getElementById('zoom-label');
+
+        const update = () => {
+            const n = parseInt(nSlider.value);
+            const zoom = parseInt(zoomSlider.value);
+            nLabel.innerText = `Liczba komórek (n): ${n}`;
+            zoomLabel.innerText = `Skala (Zoom): ${zoom}`;
+            generateVoronoi(n, zoom);
+        };
+
+        nSlider.addEventListener('input', update);
+        zoomSlider.addEventListener('input', update);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.left = window.innerWidth / -2;
+            camera.right = window.innerWidth / 2;
+            camera.top = window.innerHeight / 2;
+            camera.bottom = window.innerHeight / -2;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        update();
+        animate();
+    </script>
+</body>
+</html>
